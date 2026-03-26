@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <title>Mobile Mouse</title>
+  <link rel="manifest" href="/manifest.json">
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: #1a1a2e;
+      color: #eee;
+      font-family: system-ui, -apple-system, sans-serif;
+      height: 100dvh;
+      display: flex;
+      flex-direction: column;
+      user-select: none;
+      -webkit-user-select: none;
+      overflow: hidden;
+    }
+
+    header {
+      padding: 10px 16px;
+      background: #16213e;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+      flex-shrink: 0;
+    }
+
+    #status-dot {
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      background: #555;
+      flex-shrink: 0;
+      transition: background 0.3s;
+    }
+    #status-dot.connected    { background: #4caf50; }
+    #status-dot.disconnected { background: #f44336; }
+
+    #trackpad {
+      flex: 1;
+      background: #0f3460;
+      touch-action: none;
+      cursor: crosshair;
+      /* Visuelles Feedback beim Druecken */
+      transition: background 0.1s;
+    }
+    #trackpad.active { background: #1a4a80; }
+
+    footer {
+      display: flex;
+      gap: 1px;
+      background: #111;
+      flex-shrink: 0;
+    }
+
+    .btn {
+      flex: 1;
+      padding: 20px 0;
+      background: #16213e;
+      border: none;
+      color: #ccc;
+      font-size: 15px;
+      cursor: pointer;
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+      transition: background 0.1s;
+    }
+    .btn:active { background: #0f3460; color: #fff; }
+  </style>
+</head>
+<body>
+
+<header>
+  <div id="status-dot"></div>
+  <span id="status-text">Verbinde...</span>
+</header>
+
+<div id="trackpad"></div>
+
+<footer>
+  <button class="btn" id="btn-left">Linksklick</button>
+  <button class="btn" id="btn-right">Rechtsklick</button>
+</footer>
+
+<script>
+  // --- Konfiguration ---
+  const SENSITIVITY     = 1.5;   // Bewegungsmultiplikator
+  const TAP_MAX_MOVE    = 15;    // Max. Pixelbewegung fuer Tap-Erkennung
+  const TAP_MAX_MS      = 300;   // Max. Dauer fuer Tap-Erkennung
+  const MOVE_THROTTLE   = 16;    // Minimaler Abstand zwischen Move-Events (ms, ~60fps)
+
+  // --- WebSocket ---
+  const statusDot  = document.getElementById('status-dot');
+  const statusText = document.getElementById('status-text');
+  let ws      = null;
+  let wsReady = false;
+
+  function connect() {
+    ws = new WebSocket(`ws://${location.host}/ws`);
+
+    ws.onopen = () => {
+      wsReady = true;
+      statusDot.className = 'connected';
+      statusText.textContent = 'Verbunden';
+    };
+
+    ws.onclose = () => {
+      wsReady = false;
+      statusDot.className = 'disconnected';
+      statusText.textContent = 'Getrennt - reconnect...';
+      setTimeout(connect, 2000);
+    };
+
+    ws.onerror = () => ws.close();
+  }
+
+  function send(msg) {
+    if (wsReady && ws.readyState === WebSocket.OPEN) {
+      ws.send(JSON.stringify(msg));
+    }
+  }
+
+  // --- Touch-Zustand ---
+  const touches = new Map(); // identifier -> {startX, startY, curX, curY, startTime}
+  let maxTouches     = 0;    // Max. gleichzeitige Finger in dieser Geste
+  let gestureCanceled = false;
+  let lastMoveTime   = 0;
+
+  const trackpad = document.getElementById('trackpad');
+
+  trackpad.addEventListener('touchstart', (e) => {
+    e.preventDefault();
+    const now = Date.now();
+
+    for (const t of e.changedTouches) {
+      touches.set(t.identifier, {
+        startX: t.clientX, startY: t.clientY,
+        curX:   t.clientX, curY:   t.clientY,
+        startTime: now
+      });
+    }
+
+    maxTouches = Math.max(maxTouches, e.touches.length);
+    trackpad.classList.add('active');
+  }, { passive: false });
+
+
+  trackpad.addEventListener('touchmove', (e) => {
+    e.preventDefault();
+    const now = Date.now();
+
+    // Tap-Abbruch pruefen
+    for (const t of e.changedTouches) {
+      const info = touches.get(t.identifier);
+      if (info) {
+        const moved = Math.hypot(t.clientX - info.startX, t.clientY - info.startY);
+        if (moved > TAP_MAX_MOVE) gestureCanceled = true;
+      }
+    }
+
+    if (now - lastMoveTime < MOVE_THROTTLE) return;
+    lastMoveTime = now;
+
+    if (e.touches.length === 1) {
+      // Einzelfinger: Mausbewegung
+      const t    = e.touches[0];
+      const info = touches.get(t.identifier);
+      if (info) {
+        const dx = Math.round((t.clientX - info.curX) * SENSITIVITY);
+        const dy = Math.round((t.clientY - info.curY) * SENSITIVITY);
+        if (dx !== 0 || dy !== 0) {
+          send({ type: 'move', dx, dy });
+        }
+        info.curX = t.clientX;
+        info.curY = t.clientY;
+      }
+
+    } else if (e.touches.length === 2) {
+      // Zwei Finger: Scrollen
+      const t0    = e.touches[0];
+      const t1    = e.touches[1];
+      const info0 = touches.get(t0.identifier);
+      const info1 = touches.get(t1.identifier);
+      if (info0 && info1) {
+        const avgDy = ((t0.clientY - info0.curY) + (t1.clientY - info1.curY)) / 2;
+        if (Math.abs(avgDy) >= 3) {
+          // Finger hoch (negatives dy) = Scroll hoch (delta +1)
+          send({ type: 'scroll', delta: avgDy < 0 ? 1 : -1 });
+        }
+        info0.curX = t0.clientX; info0.curY = t0.clientY;
+        info1.curX = t1.clientX; info1.curY = t1.clientY;
+      }
+    }
+  }, { passive: false });
+
+
+  trackpad.addEventListener('touchend', (e) => {
+    e.preventDefault();
+    const now = Date.now();
+
+    for (const t of e.changedTouches) {
+      const info = touches.get(t.identifier);
+      if (info) {
+        const moved    = Math.hypot(t.clientX - info.startX, t.clientY - info.startY);
+        const duration = now - info.startTime;
+        if (moved > TAP_MAX_MOVE || duration > TAP_MAX_MS) {
+          gestureCanceled = true;
+        }
+        touches.delete(t.identifier);
+      }
+    }
+
+    if (e.touches.length === 0) {
+      // Alle Finger weg: Geste abgeschlossen
+      if (!gestureCanceled) {
+        if (maxTouches === 1) {
+          send({ type: 'click', button: 'left' });
+        } else if (maxTouches === 2) {
+          send({ type: 'click', button: 'right' });
+        }
+      }
+      maxTouches      = 0;
+      gestureCanceled = false;
+      touches.clear();
+      trackpad.classList.remove('active');
+    }
+  }, { passive: false });
+
+
+  trackpad.addEventListener('touchcancel', () => {
+    touches.clear();
+    maxTouches      = 0;
+    gestureCanceled = false;
+    trackpad.classList.remove('active');
+  });
+
+
+  // --- Buttons (Fallback fuer Barrierefreiheit) ---
+  document.getElementById('btn-left').addEventListener('click', () => {
+    send({ type: 'click', button: 'left' });
+  });
+  document.getElementById('btn-right').addEventListener('click', () => {
+    send({ type: 'click', button: 'right' });
+  });
+
+
+  // --- PWA Service Worker ---
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+
+  connect();
+</script>
+
+</body>
+</html>
