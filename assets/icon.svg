@@ -1,0 +1,67 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1024 1024"
+     width="1024" height="1024">
+
+  <defs>
+    <!-- Indigo-to-Violet gradient for mouse body -->
+    <linearGradient id="bodyGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#6366F1"/>
+      <stop offset="100%" stop-color="#4F46E5"/>
+    </linearGradient>
+
+    <!-- Subtle inner highlight for body -->
+    <linearGradient id="highlightGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#ffffff" stop-opacity="0.18"/>
+      <stop offset="100%" stop-color="#ffffff" stop-opacity="0.0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ============================================================
+       MOUSE BODY — top-down view, rounded rectangle
+       Origin centered at (512, 560); body 260w × 380h
+       ============================================================ -->
+  <rect x="381" y="370" width="262" height="380" rx="131" ry="131"
+        fill="url(#bodyGrad)"/>
+
+  <!-- Highlight overlay on body -->
+  <rect x="381" y="370" width="262" height="380" rx="131" ry="131"
+        fill="url(#highlightGrad)"/>
+
+  <!-- Left / Right button divider line -->
+  <line x1="512" y1="370" x2="512" y2="540"
+        stroke="#312E81" stroke-width="6" stroke-linecap="round"/>
+
+  <!-- Scroll wheel -->
+  <rect x="488" y="440" width="48" height="90" rx="24" ry="24"
+        fill="#312E81" opacity="0.55"/>
+
+  <!-- ============================================================
+       WIFI / WLAN ARCS — emitting upward from top of mouse
+       Center: (512, 370)  — arcs fan out toward top-left quadrant
+       Three arcs, Cyan palette, increasing radius
+       ============================================================ -->
+
+  <!-- Arc 1 — innermost, r=90 -->
+  <path d="M 422 370 A 90 90 0 0 1 602 370"
+        fill="none"
+        stroke="#06B6D4" stroke-width="42" stroke-linecap="round"
+        opacity="0.95"/>
+
+  <!-- Arc 2 — middle, r=170 -->
+  <path d="M 342 370 A 170 170 0 0 1 682 370"
+        fill="none"
+        stroke="#06B6D4" stroke-width="36" stroke-linecap="round"
+        opacity="0.65"/>
+
+  <!-- Arc 3 — outer, r=255 -->
+  <path d="M 257 370 A 255 255 0 0 1 767 370"
+        fill="none"
+        stroke="#06B6D4" stroke-width="28" stroke-linecap="round"
+        opacity="0.38"/>
+
+  <!-- Signal dot at arc origin -->
+  <circle cx="512" cy="370" r="22"
+          fill="#06B6D4"/>
+
+</svg>
